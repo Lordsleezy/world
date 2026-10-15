@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { parseMap } from '../../convex/util/object.ts';
+import { useGodToken } from '../godToken';
 
 export type ServerGame = {
   world: World;
@@ -19,8 +20,12 @@ export type ServerGame = {
 // TODO: This hook reparses the game state (even if we're not rerunning the query)
 // when used in multiple components. Move this to a context to only parse it once.
 export function useServerGame(worldId: Id<'worlds'> | undefined): ServerGame | undefined {
-  const worldState = useQuery(api.world.worldState, worldId ? { worldId } : 'skip');
-  const descriptions = useQuery(api.world.gameDescriptions, worldId ? { worldId } : 'skip');
+  const token = useGodToken() ?? '';
+  const worldState = useQuery(api.world.worldState, worldId && token ? { worldId, token } : 'skip');
+  const descriptions = useQuery(
+    api.world.gameDescriptions,
+    worldId && token ? { worldId, token } : 'skip',
+  );
   const game = useMemo(() => {
     if (!worldState || !descriptions) {
       return undefined;

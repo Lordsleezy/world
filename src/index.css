@@ -20,6 +20,12 @@
   font-family: 'VCR OSD Mono', 'monospace';
 }
 
+.sky-night { background: rgba(8, 16, 48, 0.45); }
+.sky-dusk { background: rgba(80, 40, 20, 0.28); }
+.sky-storm { background: rgba(20, 24, 32, 0.5); }
+.sky-sun { background: rgba(255, 220, 120, 0.08); }
+.sky-cloud { background: rgba(80, 90, 100, 0.12); }
+
 .font-system {
   font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 }

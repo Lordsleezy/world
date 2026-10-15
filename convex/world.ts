@@ -11,9 +11,12 @@ import {
 import { playerId } from './aiTown/ids';
 import { kickEngine, startEngine, stopEngine } from './aiTown/main';
 import { engineInsertInput } from './engine/abstractGame';
+import { requireSession, sessionOk } from './openbox/auth';
 
 export const defaultWorldStatus = query({
-  handler: async (ctx) => {
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    if (!(await sessionOk(ctx.db, args.token))) return null;
     const worldStatus = await ctx.db
       .query('worldStatus')
       .filter((q) => q.eq(q.field('isDefault'), true))
@@ -25,8 +28,10 @@ export const defaultWorldStatus = query({
 export const heartbeatWorld = mutation({
   args: {
     worldId: v.id('worlds'),
+    token: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireSession(ctx.db, args.token);
     const worldStatus = await ctx.db
       .query('worldStatus')
       .withIndex('worldId', (q) => q.eq('worldId', args.worldId))
@@ -97,13 +102,10 @@ export const restartDeadWorlds = internalMutation({
 export const userStatus = query({
   args: {
     worldId: v.id('worlds'),
+    token: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) {
-    //   return null;
-    // }
-    // return identity.tokenIdentifier;
+    if (!(await sessionOk(ctx.db, args.token))) return null;
     return DEFAULT_NAME;
   },
 });
@@ -111,8 +113,10 @@ export const userStatus = query({
 export const joinWorld = mutation({
   args: {
     worldId: v.id('worlds'),
+    token: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireSession(ctx.db, args.token);
     // const identity = await ctx.auth.getUserIdentity();
     // if (!identity) {
     //   throw new ConvexError(`Not logged in`);
@@ -142,8 +146,10 @@ export const joinWorld = mutation({
 export const leaveWorld = mutation({
   args: {
     worldId: v.id('worlds'),
+    token: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireSession(ctx.db, args.token);
     // const identity = await ctx.auth.getUserIdentity();
     // if (!identity) {
     //   throw new Error(`Not logged in`);
@@ -169,12 +175,10 @@ export const sendWorldInput = mutation({
     engineId: v.id('engines'),
     name: v.string(),
     args: v.any(),
+    token: v.string(),
   },
   handler: async (ctx, args) => {
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) {
-    //   throw new Error(`Not logged in`);
-    // }
+    await requireSession(ctx.db, args.token);
     return await engineInsertInput(ctx, args.engineId, args.name as any, args.args);
   },
 });
@@ -182,8 +186,10 @@ export const sendWorldInput = mutation({
 export const worldState = query({
   args: {
     worldId: v.id('worlds'),
+    token: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!(await sessionOk(ctx.db, args.token))) return null;
     const world = await ctx.db.get(args.worldId);
     if (!world) {
       throw new Error(`Invalid world ID: ${args.worldId}`);
@@ -206,8 +212,10 @@ export const worldState = query({
 export const gameDescriptions = query({
   args: {
     worldId: v.id('worlds'),
+    token: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!(await sessionOk(ctx.db, args.token))) return null;
     const playerDescriptions = await ctx.db
       .query('playerDescriptions')
       .withIndex('worldId', (q) => q.eq('worldId', args.worldId))
@@ -231,8 +239,10 @@ export const previousConversation = query({
   args: {
     worldId: v.id('worlds'),
     playerId,
+    token: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!(await sessionOk(ctx.db, args.token))) return null;
     // Walk the player's history in descending order, looking for a nonempty
     // conversation.
     const members = ctx.db

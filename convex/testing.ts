@@ -67,7 +67,9 @@ export const stopAllowed = query({
 
 export const stop = mutation({
   handler: async (ctx) => {
-    if (process.env.STOP_NOT_ALLOWED) throw new Error('Stop not allowed');
+    if (process.env.GOD_PASSPHRASE || process.env.STOP_NOT_ALLOWED) {
+      throw new Error('Pause the world from the god panel.');
+    }
     const { worldStatus, engine } = await getDefaultWorld(ctx.db);
     if (worldStatus.status === 'inactive' || worldStatus.status === 'stoppedByDeveloper') {
       if (engine.running) {
@@ -84,6 +86,9 @@ export const stop = mutation({
 
 export const resume = mutation({
   handler: async (ctx) => {
+    if (process.env.GOD_PASSPHRASE || process.env.STOP_NOT_ALLOWED) {
+      throw new Error('Resume the world from the god panel.');
+    }
     const { worldStatus, engine } = await getDefaultWorld(ctx.db);
     if (worldStatus.status === 'running') {
       if (!engine.running) {

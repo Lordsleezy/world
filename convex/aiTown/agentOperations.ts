@@ -103,6 +103,10 @@ export const agentDoSomething = internalAction({
     const { player, agent } = args;
     const map = new WorldMap(args.map);
     const now = Date.now();
+    const routine = await ctx.runQuery(internal.openbox.life.playerRoutine, {
+      worldId: args.worldId,
+      playerId: player.id,
+    });
     // Don't try to start a new conversation if we were just in one.
     const justLeftConversation =
       agent.lastConversation && now < agent.lastConversation + CONVERSATION_COOLDOWN;
@@ -125,8 +129,7 @@ export const agentDoSomething = internalAction({
         });
         return;
       } else {
-        // TODO: have LLM choose the activity & emoji
-        const activity = ACTIVITIES[Math.floor(Math.random() * ACTIVITIES.length)];
+        const activity = routine ?? ACTIVITIES[Math.floor(Math.random() * ACTIVITIES.length)];
         await sleep(Math.random() * 1000);
         await ctx.runMutation(api.aiTown.main.sendInput, {
           worldId: args.worldId,
@@ -143,6 +146,22 @@ export const agentDoSomething = internalAction({
         });
         return;
       }
+    }
+    if (routine && !routine.social) {
+      await ctx.runMutation(api.aiTown.main.sendInput, {
+        worldId: args.worldId,
+        name: 'finishDoSomething',
+        args: {
+          operationId: args.operationId,
+          agentId: args.agent.id,
+          activity: {
+            description: routine.description,
+            emoji: routine.emoji,
+            until: Date.now() + routine.duration,
+          },
+        },
+      });
+      return;
     }
     const invitee =
       justLeftConversation || recentlyAttemptedInvite

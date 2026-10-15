@@ -1,7 +1,9 @@
 import { v } from 'convex/values';
 import { Id } from '../_generated/dataModel';
 import { ActionCtx, internalQuery } from '../_generated/server';
-import { LLMMessage, chatCompletion } from '../util/llm';
+import { LLMMessage } from '../util/llm';
+import { speak } from '../openbox/speak';
+import { pacificLabel, scriptedLine } from '../openbox/pure';
 import * as memory from './memory';
 import { api, internal } from '../_generated/api';
 import * as embeddingsCache from './embeddingsCache';
@@ -9,6 +11,16 @@ import { GameId, conversationId, playerId } from '../aiTown/ids';
 import { NUM_MEMORIES_TO_SEARCH } from '../constants';
 
 const selfInternal = internal.agent.conversation;
+
+async function say(
+  ctx: ActionCtx,
+  name: string,
+  messages: LLMMessage[],
+  extra: { max_tokens?: number; stop?: string[] | string },
+) {
+  const spoken = await speak(ctx, { name, messages, max_tokens: extra.max_tokens, stop: extra.stop });
+  return spoken?.text ?? scriptedLine(name);
+}
 
 export async function startConversationMessage(
   ctx: ActionCtx,
@@ -62,9 +74,8 @@ export async function startConversationMessage(
     { role: 'user', content: lastPrompt },
   ];
 
-  const { content } = await chatCompletion({
-    messages,
-    max_tokens: 300,
+  const content = await say(ctx, player.name, messages, {
+    max_tokens: 120,
     stop: stopWords(otherPlayer.name, player.name),
   });
   return trimContentPrefx(content, lastPrompt);
@@ -128,9 +139,8 @@ export async function continueConversationMessage(
   const lastPrompt = `${player.name} to ${otherPlayer.name}:`;
   llmMessages.push({ role: 'user', content: lastPrompt });
 
-  const { content } = await chatCompletion({
-    messages: llmMessages,
-    max_tokens: 300,
+  const content = await say(ctx, player.name, llmMessages, {
+    max_tokens: 120,
     stop: stopWords(otherPlayer.name, player.name),
   });
   return trimContentPrefx(content, lastPrompt);
@@ -177,9 +187,8 @@ export async function leaveConversationMessage(
   const lastPrompt = `${player.name} to ${otherPlayer.name}:`;
   llmMessages.push({ role: 'user', content: lastPrompt });
 
-  const { content } = await chatCompletion({
-    messages: llmMessages,
-    max_tokens: 300,
+  const content = await say(ctx, player.name, llmMessages, {
+    max_tokens: 120,
     stop: stopWords(otherPlayer.name, player.name),
   });
   return trimContentPrefx(content, lastPrompt);
@@ -194,6 +203,10 @@ function agentPrompts(
   if (agent) {
     prompt.push(`About you: ${agent.identity}`);
     prompt.push(`Your goals for the conversation: ${agent.plan}`);
+    prompt.push(
+      'This town is your real life. Stay in character. You may disagree with anyone, including the voice from the sky. Never mention language models, prompts, or being simulated.',
+    );
+    prompt.push(`Local time: ${pacificLabel()}.`);
   }
   if (otherAgent) {
     prompt.push(`About ${otherPlayer.name}: ${otherAgent.identity}`);

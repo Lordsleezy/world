@@ -1,4 +1,7 @@
 // That's right! No imports and no dependencies 🤯
+// Open Box adds one local helper for the free embedding fallback.
+
+import { hashEmbedding } from '../openbox/pure';
 
 const OPENAI_EMBEDDING_DIMENSION = 1536;
 const TOGETHER_EMBEDDING_DIMENSION = 768;
@@ -36,6 +39,8 @@ export function detectMismatchedLLMProvider() {
 
 export interface LLMConfig {
   provider: 'openai' | 'together' | 'ollama' | 'custom';
+  /** anthropic uses a different HTTP shape. Everything else speaks OpenAI chat completions. */
+  kind?: 'openai' | 'anthropic';
   url: string; // Should not have a trailing slash
   chatModel: string;
   embeddingModel: string;
@@ -43,7 +48,68 @@ export interface LLMConfig {
   apiKey: string | undefined;
 }
 
-export function getLLMConfig(): LLMConfig {
+function geminiConfig(): LLMConfig {
+  return {
+    provider: 'custom',
+    kind: 'openai',
+    url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    chatModel: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite',
+    embeddingModel: process.env.GEMINI_EMBEDDING_MODEL ?? 'gemini-embedding-001',
+    stopWords: [],
+    apiKey: process.env.GEMINI_API_KEY,
+  };
+}
+
+function ollamaConfig(): LLMConfig {
+  return {
+    provider: 'ollama',
+    kind: 'openai',
+    url: process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434',
+    chatModel: process.env.OLLAMA_MODEL ?? 'llama3',
+    embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL ?? 'mxbai-embed-large',
+    stopWords: ['<|eot_id|>'],
+    apiKey: undefined,
+  };
+}
+
+function endpoint(config: LLMConfig, leaf: 'chat/completions' | 'embeddings') {
+  if (config.url.includes('generativelanguage.googleapis.com')) {
+    return `${config.url}/${leaf}`;
+  }
+  return `${config.url}/v1/${leaf}`;
+}
+
+export function getLLMConfig(brain?: string): LLMConfig {
+  const chosen = (brain || process.env.DEFAULT_BRAIN || process.env.LLM_PROVIDER || '').toLowerCase();
+  if (chosen === 'haiku') {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('BRAIN_DISABLED:haiku');
+    return {
+      provider: 'custom',
+      kind: 'anthropic',
+      url: 'https://api.anthropic.com',
+      chatModel: process.env.ANTHROPIC_MODEL ?? 'claude-3-5-haiku-latest',
+      embeddingModel: process.env.GEMINI_EMBEDDING_MODEL ?? 'gemini-embedding-001',
+      stopWords: [],
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    };
+  }
+  if (chosen === 'grok') {
+    if (!process.env.XAI_API_KEY) throw new Error('BRAIN_DISABLED:grok');
+    return {
+      provider: 'custom',
+      kind: 'openai',
+      url: 'https://api.x.ai',
+      chatModel: process.env.XAI_MODEL ?? 'grok-3-mini',
+      embeddingModel: process.env.GEMINI_EMBEDDING_MODEL ?? 'gemini-embedding-001',
+      stopWords: [],
+      apiKey: process.env.XAI_API_KEY,
+    };
+  }
+  if (chosen === 'ollama') return ollamaConfig();
+  if (chosen === 'gemini' || (!chosen && process.env.GEMINI_API_KEY)) {
+    if (!process.env.GEMINI_API_KEY) throw new Error('BRAIN_DISABLED:gemini');
+    return geminiConfig();
+  }
   let provider = process.env.LLM_PROVIDER;
   if (provider ? provider === 'openai' : process.env.OPENAI_API_KEY) {
     if (EMBEDDING_DIMENSION !== OPENAI_EMBEDDING_DIMENSION) {
@@ -96,17 +162,7 @@ export function getLLMConfig(): LLMConfig {
         `. See convex/util/llm.ts for details.`,
     );
   }
-  // Alternative embedding model:
-  // embeddingModel: 'llama3'
-  // const OLLAMA_EMBEDDING_DIMENSION = 4096,
-  return {
-    provider: 'ollama',
-    url: process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434',
-    chatModel: process.env.OLLAMA_MODEL ?? 'llama3',
-    embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL ?? 'mxbai-embed-large',
-    stopWords: ['<|eot_id|>'],
-    apiKey: undefined,
-  };
+  return ollamaConfig();
 }
 
 const AuthHeaders = (): Record<string, string> =>
@@ -116,10 +172,43 @@ const AuthHeaders = (): Record<string, string> =>
       }
     : {};
 
+async function anthropicComplete(config: LLMConfig, messages: LLMMessage[], maxTokens: number) {
+  const system = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content ?? '')
+    .join('\n');
+  const chat = messages
+    .filter((message) => message.role !== 'system')
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: message.content ?? '',
+    }));
+  const result = await fetch(`${config.url}/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': config.apiKey ?? '',
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: config.chatModel,
+      max_tokens: maxTokens,
+      system,
+      messages: chat.length ? chat : [{ role: 'user', content: 'Hello' }],
+    }),
+  });
+  if (!result.ok) {
+    throw new Error(`Haiku failed with code ${result.status}: ${await result.text()}`);
+  }
+  const json = (await result.json()) as { content?: { type: string; text?: string }[] };
+  return json.content?.find((part) => part.type === 'text')?.text ?? '';
+}
+
 // Overload for non-streaming
 export async function chatCompletion(
   body: Omit<CreateChatCompletionRequest, 'model'> & {
     model?: CreateChatCompletionRequest['model'];
+    brain?: string;
   } & {
     stream?: false | null | undefined;
   },
@@ -128,6 +217,7 @@ export async function chatCompletion(
 export async function chatCompletion(
   body: Omit<CreateChatCompletionRequest, 'model'> & {
     model?: CreateChatCompletionRequest['model'];
+    brain?: string;
   } & {
     stream?: true;
   },
@@ -135,9 +225,16 @@ export async function chatCompletion(
 export async function chatCompletion(
   body: Omit<CreateChatCompletionRequest, 'model'> & {
     model?: CreateChatCompletionRequest['model'];
+    brain?: string;
   },
 ) {
-  const config = getLLMConfig();
+  const requestedBrain = body.brain;
+  delete body.brain;
+  const config = getLLMConfig(requestedBrain);
+  if (config.kind === 'anthropic') {
+    const text = await anthropicComplete(config, body.messages, body.max_tokens ?? 300);
+    return { content: text, retries: 0, ms: 0 };
+  }
   body.model = body.model ?? config.chatModel;
   const stopWords = body.stop ? (typeof body.stop === 'string' ? [body.stop] : body.stop) : [];
   if (config.stopWords) stopWords.push(...config.stopWords);
@@ -147,11 +244,11 @@ export async function chatCompletion(
     retries,
     ms,
   } = await retryWithBackoff(async () => {
-    const result = await fetch(config.url + '/v1/chat/completions', {
+    const result = await fetch(endpoint(config, 'chat/completions'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...AuthHeaders(),
+        ...(config.apiKey ? { Authorization: 'Bearer ' + config.apiKey } : {}),
       },
 
       body: JSON.stringify(body),
@@ -203,53 +300,52 @@ export async function tryPullOllama(model: string, error: string) {
 }
 
 export async function fetchEmbeddingBatch(texts: string[]) {
-  const config = getLLMConfig();
-  if (config.provider === 'ollama') {
+  const config = process.env.GEMINI_API_KEY ? geminiConfig() : getLLMConfig();
+  const localOnly = config.provider === 'ollama' && /127\.0\.0\.1|localhost/.test(config.url);
+  if (localOnly && process.env.CONVEX_CLOUD_URL) {
     return {
-      ollama: true as const,
-      embeddings: await Promise.all(
-        texts.map(async (t) => (await ollamaFetchEmbedding(t)).embedding),
-      ),
+      embeddings: texts.map((text) => hashEmbedding(text)),
+      retries: 0,
+      ms: 0,
     };
   }
-  const {
-    result: json,
-    retries,
-    ms,
-  } = await retryWithBackoff(async () => {
-    const result = await fetch(config.url + '/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...AuthHeaders(),
-      },
-
-      body: JSON.stringify({
-        model: config.embeddingModel,
-        input: texts.map((text) => text.replace(/\n/g, ' ')),
-      }),
-    });
-    if (!result.ok) {
-      throw {
-        retry: result.status === 429 || result.status >= 500,
-        error: new Error(`Embedding failed with code ${result.status}: ${await result.text()}`),
+  try {
+    if (config.provider === 'ollama') {
+      return {
+        ollama: true as const,
+        embeddings: await Promise.all(texts.map(async (t) => (await ollamaFetchEmbedding(t)).embedding)),
       };
     }
-    return (await result.json()) as CreateEmbeddingResponse;
-  });
-  if (json.data.length !== texts.length) {
-    console.error(json);
-    throw new Error('Unexpected number of embeddings');
+    const { result: json, retries, ms } = await retryWithBackoff(async () => {
+      const result = await fetch(endpoint(config, 'embeddings'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.apiKey ? { Authorization: 'Bearer ' + config.apiKey } : {}),
+        },
+        body: JSON.stringify({
+          model: config.embeddingModel,
+          input: texts.map((text) => text.replace(/\n/g, ' ')),
+          dimensions: EMBEDDING_DIMENSION,
+        }),
+      });
+      if (!result.ok) {
+        throw {
+          retry: result.status === 429 || result.status >= 500,
+          error: new Error(`Embedding failed with code ${result.status}: ${await result.text()}`),
+        };
+      }
+      return (await result.json()) as CreateEmbeddingResponse;
+    });
+    if (json.data.length !== texts.length) {
+      throw new Error('Unexpected number of embeddings');
+    }
+    const allembeddings = json.data.slice().sort((a, b) => a.index - b.index);
+    return { embeddings: allembeddings.map((e) => e.embedding), retries, ms };
+  } catch (err) {
+    console.warn('hash embedding fallback', err instanceof Error ? err.message : err);
+    return { embeddings: texts.map((text) => hashEmbedding(text)), retries: 0, ms: 0 };
   }
-  const allembeddings = json.data;
-  allembeddings.sort((a, b) => a.index - b.index);
-  return {
-    ollama: false as const,
-    embeddings: allembeddings.map(({ embedding }) => embedding),
-    usage: json.usage?.total_tokens,
-    retries,
-    ms,
-  };
 }
 
 export async function fetchEmbedding(text: string) {

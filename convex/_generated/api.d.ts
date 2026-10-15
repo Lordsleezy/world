@@ -51,6 +51,12 @@ import type * as util_sleep from "../util/sleep.js";
 import type * as util_types from "../util/types.js";
 import type * as util_xxhash from "../util/xxhash.js";
 import type * as world from "../world.js";
+import type * as openbox_auth from "../openbox/auth.js";
+import type * as openbox_budget from "../openbox/budget.js";
+import type * as openbox_god from "../openbox/god.js";
+import type * as openbox_life from "../openbox/life.js";
+import type * as openbox_pure from "../openbox/pure.js";
+import type * as openbox_speak from "../openbox/speak.js";
 
 import type {
   ApiFromModules,
@@ -102,6 +108,12 @@ declare const fullApi: ApiFromModules<{
   "util/types": typeof util_types;
   "util/xxhash": typeof util_xxhash;
   world: typeof world;
+  "openbox/auth": typeof openbox_auth;
+  "openbox/budget": typeof openbox_budget;
+  "openbox/god": typeof openbox_god;
+  "openbox/life": typeof openbox_life;
+  "openbox/pure": typeof openbox_pure;
+  "openbox/speak": typeof openbox_speak;
 }>;
 
 /**

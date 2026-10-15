@@ -33,7 +33,7 @@ export const getBackgroundMusic = query({
       .order('desc')
       .first();
     if (!music) {
-      return '/ai-town/assets/background.mp3';
+      return '/assets/background.mp3';
     }
     const url = await ctx.storage.getUrl(music.storageId);
     if (!url) {
@@ -48,7 +48,7 @@ export const enqueueBackgroundMusicGeneration = internalAction({
     if (!replicateAvailable()) {
       return;
     }
-    const worldStatus = await ctx.runQuery(api.world.defaultWorldStatus);
+    const worldStatus = await ctx.runQuery(api.world.defaultWorldStatus, {});
     if (!worldStatus) {
       console.log('No active default world, returning.');
       return;

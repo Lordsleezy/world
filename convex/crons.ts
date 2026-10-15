@@ -15,26 +15,14 @@ crons.interval(
 
 crons.interval('restart dead worlds', { seconds: 60 }, internal.world.restartDeadWorlds);
 
+crons.interval('drowsy town heartbeat', { minutes: 15 }, internal.openbox.life.drowsyPulse);
+
 crons.daily('vacuum old entries', { hourUTC: 4, minuteUTC: 20 }, internal.crons.vacuumOldEntries);
 
 export default crons;
 
 const TablesToVacuum: TableNames[] = [
-  // Un-comment this to also clean out old conversations.
-  // 'conversationMembers', 'conversations', 'messages',
-
-  // Inputs aren't useful unless you're trying to replay history.
-  // If you want to support that, you should add a snapshot table, so you can
-  // replay from a certain time period. Or stop vacuuming inputs and replay from
-  // the beginning of time
   'inputs',
-
-  // We can keep memories without their embeddings for inspection, but we won't
-  // retrieve them when searching memories via vector search.
-  'memories',
-  // We can vacuum fewer tables without serious consequences, but the only
-  // one that will cause issues over time is having >>100k vectors.
-  'memoryEmbeddings',
 ];
 
 export const vacuumOldEntries = internalMutation({

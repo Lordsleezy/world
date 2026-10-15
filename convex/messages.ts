@@ -2,13 +2,16 @@ import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import { insertInput } from './aiTown/insertInput';
 import { conversationId, playerId } from './aiTown/ids';
+import { sessionOk, requireSession } from './openbox/auth';
 
 export const listMessages = query({
   args: {
     worldId: v.id('worlds'),
     conversationId,
+    token: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!(await sessionOk(ctx.db, args.token))) return [];
     const messages = await ctx.db
       .query('messages')
       .withIndex('conversationId', (q) => q.eq('worldId', args.worldId).eq('conversationId', args.conversationId))
@@ -35,8 +38,10 @@ export const writeMessage = mutation({
     messageUuid: v.string(),
     playerId,
     text: v.string(),
+    token: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireSession(ctx.db, args.token);
     await ctx.db.insert('messages', {
       conversationId: args.conversationId,
       author: args.playerId,

@@ -11,6 +11,8 @@ import { useHistoricalTime } from '../hooks/useHistoricalTime.ts';
 import { DebugTimeManager } from './DebugTimeManager.tsx';
 import { GameId } from '../../convex/aiTown/ids.ts';
 import { useServerGame } from '../hooks/serverGame.ts';
+import { useGodToken, GodTokenProvider } from '../godToken';
+import GodPanel from './GodPanel.tsx';
 
 export const SHOW_DEBUG_UI = !!import.meta.env.VITE_SHOW_DEBUG_UI;
 
@@ -22,7 +24,8 @@ export default function Game() {
   }>();
   const [gameWrapperRef, { width, height }] = useElementSize();
 
-  const worldStatus = useQuery(api.world.defaultWorldStatus);
+  const token = useGodToken() ?? '';
+  const worldStatus = useQuery(api.world.defaultWorldStatus, token ? { token } : 'skip');
   const worldId = worldStatus?.worldId;
   const engineId = worldStatus?.engineId;
 
@@ -31,7 +34,7 @@ export default function Game() {
   // Send a periodic heartbeat to our world to keep it alive.
   useWorldHeartbeat();
 
-  const worldState = useQuery(api.world.worldState, worldId ? { worldId } : 'skip');
+  const worldState = useQuery(api.world.worldState, worldId && token ? { worldId, token } : 'skip');
   const { historicalTime, timeManager } = useHistoricalTime(worldState?.engine);
 
   const scrollViewRef = useRef<HTMLDivElement>(null);
@@ -42,7 +45,7 @@ export default function Game() {
   return (
     <>
       {SHOW_DEBUG_UI && <DebugTimeManager timeManager={timeManager} width={200} height={100} />}
-      <div className="mx-auto w-full max-w grid grid-rows-[240px_1fr] lg:grid-rows-[1fr] lg:grid-cols-[1fr_auto] lg:grow max-w-[1400px] min-h-[480px] game-frame">
+      <div className="mx-auto w-full max-w grid grid-rows-[55vh_1fr] lg:grid-rows-[1fr] lg:grid-cols-[1fr_auto] lg:grow max-w-[1400px] min-h-[480px] game-frame">
         {/* Game area */}
         <div className="relative overflow-hidden bg-brown-900" ref={gameWrapperRef}>
           <div className="absolute inset-0">
@@ -51,6 +54,7 @@ export default function Game() {
                 {/* Re-propagate context because contexts are not shared between renderers.
 https://github.com/michalochman/react-pixi-fiber/issues/145#issuecomment-531549215 */}
                 <ConvexProvider client={convex}>
+                  <GodTokenProvider value={token}>
                   <PixiGame
                     game={game}
                     worldId={worldId}
@@ -60,6 +64,7 @@ https://github.com/michalochman/react-pixi-fiber/issues/145#issuecomment-5315492
                     historicalTime={historicalTime}
                     setSelectedElement={setSelectedElement}
                   />
+                  </GodTokenProvider>
                 </ConvexProvider>
               </Stage>
             </div>
@@ -70,6 +75,7 @@ https://github.com/michalochman/react-pixi-fiber/issues/145#issuecomment-5315492
           className="flex flex-col overflow-y-auto shrink-0 px-4 py-6 sm:px-6 lg:w-96 xl:pr-6 border-t-8 sm:border-t-0 sm:border-l-8 border-brown-900  bg-brown-800 text-brown-100"
           ref={scrollViewRef}
         >
+          <GodPanel />
           <PlayerDetails
             worldId={worldId}
             engineId={engineId}

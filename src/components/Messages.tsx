@@ -6,6 +6,7 @@ import { MessageInput } from './MessageInput';
 import { Player } from '../../convex/aiTown/player';
 import { Conversation } from '../../convex/aiTown/conversation';
 import { useEffect, useRef } from 'react';
+import { useGodToken } from '../godToken';
 
 export function Messages({
   worldId,
@@ -25,11 +26,13 @@ export function Messages({
   scrollViewRef: React.RefObject<HTMLDivElement>;
 }) {
   const humanPlayerId = humanPlayer?.id;
-  const descriptions = useQuery(api.world.gameDescriptions, { worldId });
-  const messages = useQuery(api.messages.listMessages, {
+  const token = useGodToken() ?? '';
+  const descriptions = useQuery(api.world.gameDescriptions, token ? { worldId, token } : 'skip');
+  const messages = useQuery(api.messages.listMessages, token ? {
     worldId,
     conversationId: conversation.doc.id,
-  });
+    token,
+  } : 'skip');
   let currentlyTyping = conversation.kind === 'active' ? conversation.doc.isTyping : undefined;
   if (messages !== undefined && currentlyTyping) {
     if (messages.find((m) => m.messageUuid === currentlyTyping!.messageUuid)) {

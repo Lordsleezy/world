@@ -9,6 +9,8 @@ import { useSendInput } from '../hooks/sendInput';
 import { Player } from '../../convex/aiTown/player';
 import { GameId } from '../../convex/aiTown/ids';
 import { ServerGame } from '../hooks/serverGame';
+import { useGodToken } from '../godToken';
+import CharacterSheet from './CharacterSheet';
 
 export default function PlayerDetails({
   worldId,
@@ -25,7 +27,8 @@ export default function PlayerDetails({
   setSelectedElement: SelectElement;
   scrollViewRef: React.RefObject<HTMLDivElement>;
 }) {
-  const humanTokenIdentifier = useQuery(api.world.userStatus, { worldId });
+  const token = useGodToken() ?? '';
+  const humanTokenIdentifier = useQuery(api.world.userStatus, token ? { worldId, token } : 'skip');
 
   const players = [...game.world.players.values()];
   const humanPlayer = players.find((p) => p.human === humanTokenIdentifier);
@@ -43,7 +46,7 @@ export default function PlayerDetails({
 
   const previousConversation = useQuery(
     api.world.previousConversation,
-    playerId ? { worldId, playerId } : 'skip',
+    playerId && token ? { worldId, playerId, token } : 'skip',
   );
 
   const playerDescription = playerId && game.playerDescriptions.get(playerId);
@@ -225,6 +228,7 @@ export default function PlayerDetails({
         <p className="leading-tight -m-4 bg-brown-700 text-base sm:text-sm">
           {!isMe && playerDescription?.description}
           {isMe && <i>This is you!</i>}
+          {!isMe && playerDescription?.name && <CharacterSheet name={playerDescription.name} />}
           {!isMe && inConversationWithMe && (
             <>
               <br />

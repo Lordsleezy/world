@@ -6,6 +6,7 @@ import { Id } from '../../convex/_generated/dataModel';
 import { useSendInput } from '../hooks/sendInput';
 import { Player } from '../../convex/aiTown/player';
 import { Conversation } from '../../convex/aiTown/conversation';
+import { useGodToken } from '../godToken';
 
 export function MessageInput({
   worldId,
@@ -18,7 +19,8 @@ export function MessageInput({
   humanPlayer: Player;
   conversation: Conversation;
 }) {
-  const descriptions = useQuery(api.world.gameDescriptions, { worldId });
+  const token = useGodToken() ?? '';
+  const descriptions = useQuery(api.world.gameDescriptions, token ? { worldId, token } : 'skip');
   const humanName = descriptions?.playerDescriptions.find((p) => p.playerId === humanPlayer.id)
     ?.name;
   const inputRef = useRef<HTMLParagraphElement>(null);
@@ -71,6 +73,7 @@ export function MessageInput({
       conversationId: conversation.id,
       text,
       messageUuid,
+      token,
     });
   };
   return (
